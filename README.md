@@ -24,7 +24,7 @@ npx add-skill wraps-team/skills/aws-ses-best-practices
 | [wraps-email](./skills/wraps-email) | TypeScript SDK for sending emails via AWS SES |
 | [wraps-sms](./skills/wraps-sms) | TypeScript SDK for sending SMS via AWS End User Messaging |
 | [wraps-cli](./skills/wraps-cli) | CLI for deploying email/SMS infrastructure to your AWS account |
-| [aws-ses-best-practices](./skills/aws-ses-best-practices) | Email deliverability, warming, and compliance guidelines |
+| [aws-ses-best-practices](./skills/aws-ses-best-practices) | Deliverability, warming, compliance, and AWS CLI diagnostics |
 
 ## What are Skills?
 
@@ -42,6 +42,7 @@ Example prompts:
 - "Send a welcome email using Wraps"
 - "Set up email infrastructure with the Wraps CLI"
 - "Send an OTP via SMS"
+- "Check my SES configuration with AWS CLI"
 - "Help me improve email deliverability"
 
 ## Links

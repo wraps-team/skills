@@ -418,3 +418,161 @@ Check regularly in AWS Console → SES → Reputation Metrics:
 2. Check content for spam triggers
 3. Warm up sending volume gradually
 4. Build engagement (opens/clicks improve reputation)
+
+## AWS CLI Diagnostics
+
+### Account Status
+
+```bash
+# Get sending quota and daily usage
+aws ses get-send-quota
+
+# Check if in sandbox (SESv2)
+aws sesv2 get-account
+
+# Account-level suppression settings
+aws sesv2 get-account --query 'SuppressionAttributes'
+```
+
+### Identity Verification
+
+```bash
+# List verified domains
+aws ses list-identities --identity-type Domain
+
+# List verified email addresses
+aws ses list-identities --identity-type EmailAddress
+
+# Check verification status for a domain
+aws ses get-identity-verification-attributes \
+  --identities yourapp.com
+
+# Full identity details (SESv2)
+aws sesv2 get-email-identity --email-identity yourapp.com
+```
+
+### DKIM Status
+
+```bash
+# Check DKIM configuration
+aws ses get-identity-dkim-attributes --identities yourapp.com
+
+# SESv2 DKIM details
+aws sesv2 get-email-identity --email-identity yourapp.com \
+  --query 'DkimAttributes'
+```
+
+### MAIL FROM Configuration
+
+```bash
+# Check custom MAIL FROM domain
+aws ses get-identity-mail-from-domain-attributes \
+  --identities yourapp.com
+```
+
+### Configuration Sets
+
+```bash
+# List all configuration sets
+aws sesv2 list-configuration-sets
+
+# Get details for a configuration set
+aws sesv2 get-configuration-set \
+  --configuration-set-name my-config-set
+
+# List event destinations
+aws sesv2 get-configuration-set-event-destinations \
+  --configuration-set-name my-config-set
+```
+
+### Sending Statistics
+
+```bash
+# Basic send stats (last 2 weeks, 15-min intervals)
+aws ses get-send-statistics
+
+# CloudWatch metrics for sends
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/SES \
+  --metric-name Send \
+  --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 3600 \
+  --statistics Sum
+```
+
+### Reputation Metrics
+
+```bash
+# Bounce rate (last 7 days)
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/SES \
+  --metric-name Reputation.BounceRate \
+  --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 86400 \
+  --statistics Average
+
+# Complaint rate (last 7 days)
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/SES \
+  --metric-name Reputation.ComplaintRate \
+  --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 86400 \
+  --statistics Average
+```
+
+### Suppression List
+
+```bash
+# List suppressed addresses
+aws sesv2 list-suppressed-destinations
+
+# Filter by reason
+aws sesv2 list-suppressed-destinations --reasons BOUNCE
+aws sesv2 list-suppressed-destinations --reasons COMPLAINT
+
+# Check specific address
+aws sesv2 get-suppressed-destination \
+  --email-address user@example.com
+
+# Remove from suppression list
+aws sesv2 delete-suppressed-destination \
+  --email-address user@example.com
+
+# Add to suppression list
+aws sesv2 put-suppressed-destination \
+  --email-address user@example.com \
+  --reason COMPLAINT
+```
+
+### Test Sending
+
+```bash
+# Send test email
+aws ses send-email \
+  --from verified@yourapp.com \
+  --to recipient@example.com \
+  --subject "Test Email" \
+  --text "This is a test email sent via AWS CLI."
+
+# Verify email address (sandbox mode)
+aws ses verify-email-identity --email-address test@example.com
+```
+
+### DNS Verification (External)
+
+```bash
+# Check DKIM records
+dig +short TXT selector1._domainkey.yourapp.com
+
+# Check SPF record
+dig +short TXT yourapp.com | grep spf
+
+# Check DMARC record
+dig +short TXT _dmarc.yourapp.com
+
+# Check MX record (for custom MAIL FROM)
+dig +short MX mail.yourapp.com
+```
