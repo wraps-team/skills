@@ -8,14 +8,7 @@ Agent skills for building with [Wraps.dev](https://wraps.dev) — modern email a
 npx add-skill wraps-team/skills
 ```
 
-Or add individual skills:
-
-```bash
-npx add-skill wraps-team/skills/wraps-email
-npx add-skill wraps-team/skills/wraps-sms
-npx add-skill wraps-team/skills/wraps-cli
-npx add-skill wraps-team/skills/aws-ses-best-practices
-```
+This installs all available skills. You'll be prompted to select which ones to add.
 
 ## Available Skills
 
