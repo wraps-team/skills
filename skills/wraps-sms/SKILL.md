@@ -1,3 +1,8 @@
+---
+name: wraps-sms
+description: TypeScript SDK for AWS End User Messaging (Pinpoint SMS) with opt-out management, batch sending, and E.164 validation.
+---
+
 # @wraps.dev/sms SDK
 
 TypeScript SDK for AWS End User Messaging (Pinpoint SMS) with opt-out management, batch sending, and E.164 validation. Calls your AWS account directly — no proxy, no markup.

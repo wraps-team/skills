@@ -1,3 +1,8 @@
+---
+name: wraps-cli
+description: CLI that deploys SES, DynamoDB, Lambda, and IAM resources to your AWS account with automatic DKIM, SPF, DMARC configuration.
+---
+
 # @wraps.dev/cli
 
 CLI that deploys SES, DynamoDB, Lambda, and IAM resources to your AWS account. Configures DKIM, SPF, DMARC, and event tracking automatically.

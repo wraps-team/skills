@@ -1,3 +1,8 @@
+---
+name: wraps-email
+description: TypeScript SDK for AWS SES with automatic credential resolution, React.email support, and template management.
+---
+
 # @wraps.dev/email SDK
 
 TypeScript SDK for AWS SES with automatic credential resolution, React.email support, and template management. Calls your SES directly — no proxy, no markup.

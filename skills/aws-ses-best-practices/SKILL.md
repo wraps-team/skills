@@ -1,3 +1,8 @@
+---
+name: aws-ses-best-practices
+description: Email deliverability, warming, compliance, and operational guidelines for AWS Simple Email Service.
+---
+
 # AWS SES Best Practices
 
 Email deliverability, warming, compliance, and operational guidelines for AWS Simple Email Service.
