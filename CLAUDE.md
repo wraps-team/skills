@@ -6,10 +6,13 @@ This repository contains agent skills for the Wraps.dev platform.
 
 ```
 skills/
-├── wraps-email/      # @wraps.dev/email SDK patterns
-├── wraps-sms/        # @wraps.dev/sms SDK patterns
-├── wraps-cli/        # @wraps.dev/cli deployment patterns
-└── aws-ses-best-practices/  # Email deliverability guidelines
+├── wraps-email/              # @wraps.dev/email SDK patterns
+├── wraps-sms/                # @wraps.dev/sms SDK patterns
+├── wraps-cli/                # @wraps.dev/cli deployment patterns
+├── aws-ses-best-practices/   # Email deliverability guidelines
+├── ses-troubleshoot/         # Interactive SES deliverability troubleshooting
+├── wraps-quickstart/         # Zero-to-sending setup guide
+└── email-content-guide/      # Email content best practices for inbox placement
 ```
 
 ## Skill Format

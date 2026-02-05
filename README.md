@@ -18,6 +18,9 @@ This installs all available skills. You'll be prompted to select which ones to a
 | [wraps-sms](./skills/wraps-sms) | TypeScript SDK for sending SMS via AWS End User Messaging |
 | [wraps-cli](./skills/wraps-cli) | CLI for deploying email/SMS infrastructure to your AWS account |
 | [aws-ses-best-practices](./skills/aws-ses-best-practices) | Deliverability, warming, compliance, and AWS CLI diagnostics |
+| [ses-troubleshoot](./skills/ses-troubleshoot) | Interactive SES deliverability troubleshooting and diagnosis |
+| [wraps-quickstart](./skills/wraps-quickstart) | Zero-to-sending setup guide, adapts to your framework and hosting |
+| [email-content-guide](./skills/email-content-guide) | Email content best practices for inbox placement and spam avoidance |
 
 ## What are Skills?
 
@@ -37,6 +40,9 @@ Example prompts:
 - "Send an OTP via SMS"
 - "Check my SES configuration with AWS CLI"
 - "Help me improve email deliverability"
+- "My emails are bouncing, help me diagnose"
+- "Set up Wraps for my Next.js app"
+- "Write a welcome email that won't hit spam"
 
 ## Links
 
