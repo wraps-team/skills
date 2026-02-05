@@ -30,36 +30,114 @@ Ask which problem they're experiencing, then follow the matching branch:
 
 ## Step 2: Gather Context
 
-Before running diagnostics, gather context:
+Before running diagnostics, gather the user's domain and region from Wraps metadata:
 
 ```bash
-# Get Wraps infrastructure overview
-wraps email status
+# Read connection metadata to get domain, region, and config
+cat ~/.wraps/connections/*.json
+```
 
-# Check AWS connectivity and identity
+**Metadata JSON paths:**
+- Region: `.region` (top-level)
+- Domain: `.services.email.config.domain`
+- Provider: `.provider`
+- Account ID: `.accountId`
+- Preset: `.services.email.preset`
+- MAIL FROM subdomain: `.services.email.config.mailFromSubdomain`
+
+Then check AWS connectivity:
+
+```bash
 aws sts get-caller-identity
 ```
 
-Find the user's domain and region from wraps config or `~/.wraps/connections/` metadata files.
+---
+
+## Primary Diagnostic Tool: `email check`
+
+The Wraps CLI includes a comprehensive deliverability checker. **Always use `--json` for structured output** that's easy to interpret programmatically:
+
+```bash
+npx @wraps.dev/cli email check <domain> --json
+```
+
+This single command checks **all** of the following:
+- **SPF**: Record, validity, DNS lookup count (max 10), `all` mechanism
+- **DKIM**: Automatically finds correct SES token-based selectors (NOT `selector1/2/3`), key type and size
+- **DMARC**: Policy, alignment, reporting configuration
+- **MX Records**: Existence, resolution, redundancy
+- **Mail Server TLS**: STARTTLS support, TLS version on each MX server
+- **Reverse DNS**: PTR records for all MX IPs
+- **IPv6**: MX AAAA records and SPF IPv6 coverage
+- **Blacklists**: 12+ domain blacklists, 30+ IP blacklists per MX IP (165+ total checks)
+- **Domain Age**: Registration date, registrar, RDAP data
+- **DNSSEC, CAA, BIMI, MTA-STS, TLS-RPT**: Advanced security checks
+- **Score**: 0-100 score with grade (A/B/C/D/F), deductions, and bonuses
+
+**Key JSON paths in the response:**
+- Overall: `.score.grade`, `.score.finalScore`, `.score.deductions[]`
+- SPF: `.spf.exists`, `.spf.valid`, `.spf.record`, `.spf.lookupCount`, `.spf.allMechanism`
+- DKIM: `.dkim.found`, `.dkim.selectors[].valid`, `.dkim.selectors[].keyBits`
+- DMARC: `.dmarc.exists`, `.dmarc.valid`, `.dmarc.policy`, `.dmarc.reportingEnabled`
+- MX: `.mx.exists`, `.mx.records[]`, `.mx.hasRedundancy`
+- Blacklists: `.blacklist.overallClean`, `.blacklist.ipChecks.listed[]`, `.blacklist.domainChecks.listed[]`
+- Domain age: `.domainAge.ageInDays`, `.domainAge.createdAt`
+
+**Grade thresholds:**
+- A (90-100): Excellent, all best practices followed
+- B (75-89): Good, minor improvements possible
+- C (60-74): Fair, notable issues to address
+- D (40-59): Poor, significant problems
+- F (0-39): Failing, critical issues
+
+Use this command as the **first diagnostic step** for any symptom involving DNS, authentication, or reputation. It replaces the need for individual `dig`, `nslookup`, or manual DNS commands.
 
 ---
 
-## Bounce Diagnosis
+## SES Account Diagnostics
 
-### Check 1: Bounce rate from SES account
-
-```bash
-aws sesv2 get-account --region <region> \
-  --query '{BounceRate: SendingEnabled, EnforcementStatus: EnforcementStatus}'
-```
-
-Full account details including reputation:
+For account-level checks, run `get-account` **once** and interpret multiple fields:
 
 ```bash
 aws sesv2 get-account --region <region>
 ```
 
-Look at the `SendQuota` and reputation fields. Bounce rate thresholds:
+**Key fields to inspect from the single response:**
+
+| Field | What it tells you |
+|-------|-------------------|
+| `SendingEnabled` | Whether the account can send at all |
+| `ProductionAccessEnabled` | `false` = sandbox mode (200/day, verified recipients only) |
+| `EnforcementStatus` | HEALTHY, PROBATION, or SHUTDOWN |
+| `Details.ReviewDetails.Status` | PENDING, GRANTED, DENIED, or FAILED |
+| `SendQuota.Max24HourSend` | Daily sending limit |
+| `SendQuota.SentLast24Hours` | Emails sent in rolling 24h window |
+| `SendQuota.MaxSendRate` | Max emails per second |
+| `SuppressionAttributes.SuppressedReasons` | What gets auto-suppressed |
+
+**Important:** `get-account` does NOT return bounce/complaint rate percentages directly. Those are available in the SES console's Reputation Dashboard or via Virtual Deliverability Manager metrics. The thresholds below are for interpreting those rates when the user provides them or when checking the console.
+
+---
+
+## Bounce Diagnosis
+
+### Check 1: Run email check
+
+```bash
+npx @wraps.dev/cli email check <domain> --json
+```
+
+Look at `.score.grade` and `.score.deductions[]` for DNS/authentication issues that could cause bounces.
+
+### Check 2: SES account status
+
+```bash
+aws sesv2 get-account --region <region>
+```
+
+Check `EnforcementStatus` and compare `SentLast24Hours` to `Max24HourSend`. If near the limit, sends are throttled or rejected.
+
+Bounce rate thresholds (from SES console Reputation Dashboard):
 
 | Rate | Status | Action |
 |------|--------|--------|
@@ -68,7 +146,7 @@ Look at the `SendQuota` and reputation fields. Bounce rate thresholds:
 | 5-10% | Critical | Stop marketing sends, aggressive cleanup |
 | > 10% | Danger | SES will suspend account |
 
-### Check 2: Suppression list
+### Check 3: Suppression list
 
 ```bash
 # List all suppressed addresses
@@ -86,25 +164,9 @@ aws sesv2 delete-suppressed-destination \
   --email-address user@example.com --region <region>
 ```
 
-### Check 3: DNS authentication issues causing bounces
-
-```bash
-wraps email check <domain>
-```
-
-This runs SPF, DKIM, DMARC, and blacklist checks. Grade must be B+ or higher.
-
-### Check 4: Sending quota
-
-```bash
-aws sesv2 get-account --region <region> --query 'SendQuota'
-```
-
-Compare `SentLast24Hours` to `Max24HourSend`. If near the limit, sends are throttled or rejected.
-
 ### Bounce Remediation (ordered by impact)
 
-1. **DNS issues** → Fix SPF/DKIM/DMARC records (see Spam Diagnosis for exact records)
+1. **DNS issues** → Fix SPF/DKIM/DMARC records based on `email check` findings
 2. **Suppression list bloated** → Clean suppression list + fix source data quality
 3. **Bounce rate > 5%** → Pause marketing sends, run engagement-based list cleanup
 4. **Sending quota hit** → Request limit increase in AWS Console → SES → Account Dashboard
@@ -114,51 +176,40 @@ Compare `SentLast24Hours` to `Max24HourSend`. If near the limit, sends are throt
 
 ## Spam Diagnosis
 
-### Check 1: DNS authentication
+### Check 1: Comprehensive email check
 
 ```bash
-wraps email check <domain>
+npx @wraps.dev/cli email check <domain> --json
 ```
 
-Critical checks and what to look for:
+Interpret the JSON response - key things to look for:
 
-**SPF**: Must include `amazonses.com`
-```
-v=spf1 include:amazonses.com ~all
-```
+**SPF** (`.spf`): Must include `amazonses.com`. Check `.spf.allMechanism` — should be `-` (hard fail). `~` (soft fail) is acceptable but weaker.
 
-**DKIM**: All 3 CNAME records must resolve
-```bash
-dig +short CNAME selector1._domainkey.<domain>
-dig +short CNAME selector2._domainkey.<domain>
-dig +short CNAME selector3._domainkey.<domain>
+**DKIM** (`.dkim`): At least one valid selector with 2048-bit RSA key. The CLI automatically checks the correct SES token-based selectors (e.g., `bsksdtrd66emmvw6frf33yopnumfs33r._domainkey`), NOT the generic `selector1/2/3` names.
+
+**DMARC** (`.dmarc`): Policy should be `quarantine` or `reject` (NOT `none`). If `.dmarc.policy` is `none`, inbox providers may deprioritize emails. Recommended record:
+```
+_dmarc.<domain> TXT "v=DMARC1; p=reject; rua=mailto:dmarc@<domain>"
 ```
 
-**DMARC**: Should be `quarantine` or `reject` (NOT `none`)
-```bash
-dig +short TXT _dmarc.<domain>
-```
+**Blacklists** (`.blacklist`): Check `.blacklist.overallClean`. If `false`, inspect `.blacklist.ipChecks.listed[]` and `.blacklist.domainChecks.listed[]`. Note the `priority` field — `high` priority listings are critical, `low` priority (like `cbl.anti-spam.org.cn`) are less impactful but should still be addressed.
 
-If DMARC is `p=none`, inbox providers may deprioritize emails. Upgrade to:
-```
-_dmarc.<domain> TXT "v=DMARC1; p=quarantine; rua=mailto:dmarc@<domain>"
-```
+**Domain Age** (`.domainAge.ageInDays`): Domains < 30 days old have inherently low reputation.
 
-**Blacklists**: Any listings are critical and must be addressed.
+### Check 2: DMARC alignment and MAIL FROM
 
-### Check 2: DMARC alignment
-
-DMARC alignment fails when the From domain doesn't match the SPF or DKIM signing domain. Check:
-
-- Is the envelope sender (MAIL FROM) the same domain as the header From?
-- Custom MAIL FROM domain helps alignment:
+Check the MAIL FROM configuration from the SES identity:
 
 ```bash
-# Check current MAIL FROM config
-aws ses get-identity-mail-from-domain-attributes --identities <domain>
+aws sesv2 get-email-identity --email-identity <domain> --region <region>
 ```
 
-If not set, configure a custom MAIL FROM domain (e.g., `mail.<domain>`) with:
+Look at `MailFromAttributes`:
+- `MailFromDomain`: Should be a subdomain like `mail.<domain>`
+- `MailFromDomainStatus`: Should be `SUCCESS`
+
+If MAIL FROM is not configured, set it up with these DNS records:
 - MX record: `mail.<domain> MX 10 feedback-smtp.<region>.amazonses.com`
 - SPF record: `mail.<domain> TXT "v=spf1 include:amazonses.com ~all"`
 
@@ -168,9 +219,9 @@ If not set, configure a custom MAIL FROM domain (e.g., `mail.<domain>`) with:
 aws sesv2 get-account --region <region>
 ```
 
-Check `EnforcementStatus` (HEALTHY, PROBATION, SHUTDOWN) and the reputation metrics.
+Check `EnforcementStatus` (HEALTHY, PROBATION, SHUTDOWN).
 
-For new domains (< 30 days old), low reputation is expected. Follow IP warming schedule:
+For new domains (< 30 days old), low reputation is expected. Follow warming schedule:
 - Days 1-2: 200 emails
 - Days 3-7: 500-1,000
 - Days 8-14: 5,000
@@ -189,9 +240,9 @@ Ask the user for a recent email's HTML or subject line. Check for:
 
 ### Spam Remediation (ordered by impact)
 
-1. **Fix DNS** → Add/correct SPF, DKIM, and DMARC records
+1. **Fix DNS** → Address all issues from `email check` deductions
 2. **Set up custom MAIL FROM domain** → Improves DMARC alignment
-3. **Request blacklist delisting** → Use the removal URL for each listed blacklist
+3. **Request blacklist delisting** → Use the `delistUrl` from listed entries, or visit the blacklist's website
 4. **Warm sending gradually** → Follow warming schedule for new/cold domains
 5. **Clean content** → Remove spam triggers, add plain text version, reduce link count
 6. **Add List-Unsubscribe header** → Required for marketing, improves inbox placement
@@ -200,45 +251,38 @@ Ask the user for a recent email's HTML or subject line. Check for:
 
 ## Send Failure Diagnosis
 
-### Check 1: SES sandbox status
+### Check 1: SES account status (sandbox, quota, enforcement)
 
 ```bash
 aws sesv2 get-account --region <region>
 ```
 
-If `ProductionAccessEnabled` is `false`, the account is in sandbox mode:
-- Limited to 200 emails/day
-- Can only send to verified email addresses
-- **Fix**: Request production access in AWS Console → SES → Account Dashboard
+Check all of these from the single response:
+- `ProductionAccessEnabled`: If `false`, account is in sandbox mode (200 emails/day, verified recipients only). **Fix**: Request production access in AWS Console → SES → Account Dashboard.
+- `SendQuota`: If `SentLast24Hours` equals or exceeds `Max24HourSend`, all sends are rejected until the 24-hour window rolls.
+- `SendingEnabled`: If `false`, sending is disabled entirely.
+- `EnforcementStatus`: If not HEALTHY, account may be restricted.
 
-### Check 2: Sending quota
-
-```bash
-aws sesv2 get-account --region <region> --query 'SendQuota'
-```
-
-If `SentLast24Hours` equals or exceeds `Max24HourSend`, all sends are rejected until the 24-hour window rolls.
-
-### Check 3: Domain verification
+### Check 2: Domain verification
 
 ```bash
 aws sesv2 get-email-identity --email-identity <domain> --region <region>
 ```
 
 Check `VerifiedForSendingStatus`. If `false`, the domain isn't verified:
-- Check DKIM CNAME records are added to DNS
+- Run `npx @wraps.dev/cli email check <domain> --json` to see DKIM status
 - DNS propagation takes 5-60 minutes
-- Verify with: `wraps email verify --domain <domain>`
+- Verify with: `npx @wraps.dev/cli email verify --domain <domain>`
 
-### Check 4: IAM permissions
+### Check 3: IAM permissions
 
 ```bash
-wraps email status
+npx @wraps.dev/cli email status
 ```
 
 The IAM role must have `ses:SendEmail` and `ses:SendRawEmail` permissions. If using Vercel OIDC, verify the trust relationship is configured correctly.
 
-### Check 5: Configuration set
+### Check 4: Configuration set
 
 ```bash
 aws sesv2 get-configuration-set \
@@ -256,9 +300,9 @@ aws sesv2 get-configuration-set-event-destinations \
 
 1. **Sandbox** → Request production access via AWS Console
 2. **Quota hit** → Request limit increase, or spread sends over time
-3. **Domain not verified** → Add DKIM CNAME records, wait for propagation
-4. **Permissions** → Run `wraps email init` to recreate/fix IAM role
-5. **Config set missing** → Run `wraps email upgrade` to recreate
+3. **Domain not verified** → Check DKIM records with `email check`, wait for propagation
+4. **Permissions** → Run `npx @wraps.dev/cli email init` to recreate/fix IAM role
+5. **Config set missing** → Run `npx @wraps.dev/cli email upgrade` to recreate
 
 ---
 
@@ -272,19 +316,27 @@ aws sesv2 get-account --region <region>
 
 Key fields:
 - `EnforcementStatus`: HEALTHY, PROBATION, or SHUTDOWN
-- `ReviewDetails`: Any ongoing AWS review
+- `Details.ReviewDetails`: Any ongoing AWS review
 - `ProductionAccessEnabled`: Whether production sending is allowed
 
 ### Check 2: Reputation metrics
 
-From the same `get-account` response, check bounce and complaint rates:
+From the same `get-account` response, note the enforcement status. For actual bounce/complaint rate percentages, check the SES console Reputation Dashboard or Virtual Deliverability Manager.
 
 | Metric | Healthy | Warning | Critical |
 |--------|---------|---------|----------|
 | Bounce Rate | < 2% | 2-5% | > 5% |
 | Complaint Rate | < 0.1% | 0.1-0.3% | > 0.3% |
 
-### Check 3: CloudWatch alarms
+### Check 3: Email check for DNS/reputation issues
+
+```bash
+npx @wraps.dev/cli email check <domain> --json
+```
+
+Check for blacklist listings, domain age, and authentication issues that could be contributing to account health problems.
+
+### Check 4: CloudWatch alarms
 
 ```bash
 aws cloudwatch describe-alarms \
@@ -311,11 +363,13 @@ Check if any alarms are in ALARM state.
 
 ## Complaint Diagnosis
 
-### Check 1: Complaint rate
+### Check 1: Account status and complaint rate
 
 ```bash
 aws sesv2 get-account --region <region>
 ```
+
+Check `EnforcementStatus`. For actual complaint rate, check SES console Reputation Dashboard.
 
 Complaint rate thresholds:
 
@@ -357,10 +411,10 @@ Verify emails include:
 ### Check 1: SES sending rate
 
 ```bash
-aws sesv2 get-account --region <region> --query 'SendQuota.MaxSendRate'
+aws sesv2 get-account --region <region>
 ```
 
-If you're sending faster than `MaxSendRate` (emails per second), SES throttles delivery.
+Check `SendQuota.MaxSendRate`. If you're sending faster than this (emails per second), SES throttles delivery.
 
 ### Check 2: Delivery delay events
 
@@ -395,7 +449,7 @@ Problems are often related. Common patterns:
 
 **Pattern: Missing authentication cascade**
 - No DMARC or DMARC=none → Emails hit spam → Users don't see unsubscribe → They mark as spam → Complaint rate rises → Account reputation drops
-- Fix: Set DMARC to quarantine, add visible unsubscribe, clean complaint-sourced suppressions
+- Fix: Set DMARC to quarantine/reject, add visible unsubscribe, clean complaint-sourced suppressions
 
 **Pattern: New domain cold start**
 - New domain + high volume immediately → Greylisting + spam placement → Low engagement → Poor reputation → More spam placement
