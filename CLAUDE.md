@@ -11,6 +11,7 @@ skills/
 ├── wraps-cli/                # @wraps.dev/cli deployment patterns
 ├── aws-ses-best-practices/   # Email deliverability guidelines
 ├── ses-troubleshoot/         # Interactive SES deliverability troubleshooting
+├── wraps-workflows/           # Workflow automation DSL
 ├── wraps-quickstart/         # Zero-to-sending setup guide
 └── email-content-guide/      # Email content best practices for inbox placement
 ```
